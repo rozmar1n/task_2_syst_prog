@@ -63,7 +63,19 @@ token_reset(struct token *t)
 static void
 command_append_arg(struct command *cmd, char *arg)
 {
-	if (cmd->arg_count == cmd->arg_capacity) {
+    if (cmd->arg_capacity == 0) //Initializing the command with the first argument
+    {
+        assert(cmd->arg_count == 0);
+        cmd->arg_capacity = 4; // Initial capacity
+        cmd->args = malloc(sizeof(*cmd->args) * cmd->arg_capacity);
+        cmd->args[0] = strdup(cmd->exe); // The first argument is the command itself
+        cmd->args[1] = arg;
+        cmd->args[2] = NULL; // Null-terminate the arguments array
+        cmd->arg_count = 1;
+        return;
+    }
+    
+    if (cmd->arg_count == cmd->arg_capacity - 1) {
 		cmd->arg_capacity = (cmd->arg_capacity + 1) * 2;
 		cmd->args = realloc(cmd->args, sizeof(*cmd->args) * cmd->arg_capacity);
 	} else {
