@@ -47,12 +47,18 @@ static int
 builtin_exit(char **args, int arg_count)
 {
     (void)args;
-    if (arg_count > 2) {
+    if (arg_count > 1) {
         fprintf(stderr, "exit: too many arguments\n");
         return BUILTIN_COMMAND_ERROR;
     }
-    int exit_code = atoi(args[0]);
-    printf("Exiting...\n");
+
+    int exit_code = 0;
+    if (arg_count == 0) {
+        exit_code = BUILTIN_COMMAND_SUCCESS;
+    } else {
+        exit_code = atoi(args[1]);
+    }
+
     exit(exit_code);
 
     assert(false);
