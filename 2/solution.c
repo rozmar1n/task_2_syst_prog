@@ -98,6 +98,27 @@ builtin_false(char **args, int arg_count)
     return BUILTIN_COMMAND_ERROR;
 }
 
+static int
+builtin_echo(char **args, int arg_count)
+{
+    if (arg_count == 0) {
+        printf("\n");
+        return BUILTIN_COMMAND_SUCCESS;
+    }
+    else {
+        for (int i = 1; i <= arg_count; i++)
+        {
+            if (i > 1) {
+                printf(" ");
+            }
+            printf("%s", args[i]);
+        }
+        printf("\n");
+        return BUILTIN_COMMAND_SUCCESS;
+    }
+    return BUILTIN_COMMAND_ERROR;
+}
+
 /*builtin_table[0] = NULL; because enum start from 1*/
 builtin_func builtin_table[] = {
     NULL,
@@ -105,7 +126,8 @@ builtin_func builtin_table[] = {
     builtin_exit,
     builtin_pwd,
     builtin_true,
-    builtin_false
+    builtin_false,
+    builtin_echo
 };
 
 static enum built_in_command_type
@@ -138,10 +160,14 @@ execute_command_line(const struct command_line *line)
 {
 	/* REPLACE THIS CODE WITH ACTUAL COMMAND EXECUTION */
     static int bg_command_count = 0;
+    //static int cur_to_parent[2];
+    //static int cur_to_child[2];
+
+
 	assert(line != NULL);
 
     bg_command_count += (int)line->is_background;
-
+    //fprintf(stderr, "Executing command line with %d background commands\n", bg_command_count);
 	if (line->out_type == OUTPUT_TYPE_STDOUT) {
 		//printf("stdout\n");
 	} else if (line->out_type == OUTPUT_TYPE_FILE_NEW) {
@@ -149,7 +175,7 @@ execute_command_line(const struct command_line *line)
 	} else if (line->out_type == OUTPUT_TYPE_FILE_APPEND) {
 		//printf("append file - \"%s\"\n", line->out_file);
 	} else {
-		//assert(false);
+		assert(false);
 	}
 	//printf("Expressions:\n");
 	const struct expr *e = line->head;
