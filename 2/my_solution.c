@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 typedef int (*builtin_func)(char **args, int arg_count);
 
@@ -121,13 +122,13 @@ builtin_echo(char **args, int arg_count)
 
 /*builtin_table[0] = NULL; because enum start from 1*/
 builtin_func builtin_table[] = {
-    NULL,
-    builtin_cd,
-    builtin_exit,
-    builtin_pwd,
-    builtin_true,
-    builtin_false,
-    builtin_echo
+    NULL,           
+    builtin_cd,     
+    builtin_exit,   
+    builtin_pwd,    
+    builtin_true,   
+    builtin_false,  
+    builtin_echo    
 };
 
 static enum built_in_command_type
@@ -160,54 +161,82 @@ execute_command_line(const struct command_line *line)
 {
 	/* REPLACE THIS CODE WITH ACTUAL COMMAND EXECUTION */
     static int bg_command_count = 0;
-    //static int cur_to_parent[2];
-    //static int cur_to_child[2];
-
-
+    int out_file = STDOUT_FILENO;
+    
 	assert(line != NULL);
 
     bg_command_count += (int)line->is_background;
-    //fprintf(stderr, "Executing command line with %d background commands\n", bg_command_count);
+
 	if (line->out_type == OUTPUT_TYPE_STDOUT) {
-		//printf("stdout\n");
+		//do nothing
 	} else if (line->out_type == OUTPUT_TYPE_FILE_NEW) {
-		//printf("new file - \"%s\"\n", line->out_file);
+		out_file = open(line->out_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        dup2(out_file, STDOUT_FILENO);
 	} else if (line->out_type == OUTPUT_TYPE_FILE_APPEND) {
-		//printf("append file - \"%s\"\n", line->out_file);
+		out_file = open(line->out_file, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        dup2(out_file, STDOUT_FILENO);
 	} else {
 		assert(false);
 	}
 	//printf("Expressions:\n");
 	const struct expr *e = line->head;
     enum built_in_command_type type = BUILTIN_COMMAND_TYPE_NONE;
+
+    int has_prev = 0;
+    int will_pipe = 0;
+
+    int prev_pipe[2] = {0};
+
 	while (e != NULL) {
 		if (e->type == EXPR_TYPE_COMMAND) {
+
+            int next_pipe[2] = {0};
+            if(e->next){
+                if (e->next->type == EXPR_TYPE_PIPE) will_pipe = 1;
+            } 
+            if (will_pipe) pipe(next_pipe);
+
             type = is_builtin_command(e->cmd.exe);
             if (type != BUILTIN_COMMAND_TYPE_NONE) {
+                if (has_prev)  dup2(prev_pipe[0], STDIN_FILENO);
+                if (will_pipe) dup2(next_pipe[1], STDOUT_FILENO);
+                
                 int res = builtin_table[type](e->cmd.args, e->cmd.arg_count);
                 (void)res;
-            } else {
-                int pid = fork();
-                if (pid == 0)   //CHILD
-                {
-                    int rc = execvp(e->cmd.exe, e->cmd.args);
-                    perror("execvp");
-                    _exit(rc);
-                } 
-                else if(pid > 0) //PARENT
-                {
-                    int status;
-                    wait(&status); 
-                }
-                else            //FORK ERROR
-                {
-                    perror("fork");
-                    exit(EXIT_FAILURE);
+                
+                if (will_pipe) close(next_pipe[1]);
+                if (will_pipe) close(next_pipe[0]);
+                
+                if (has_prev) close(prev_pipe[1]);
+                if (has_prev) close(prev_pipe[0]);
+            } 
+            else {
+                pid_t pid = fork();
+                if (pid == 0) {
+                    if (has_prev)  dup2(prev_pipe[0], STDIN_FILENO);
+                    if (will_pipe) dup2(next_pipe[1], STDOUT_FILENO);
+                    
+                    if (has_prev)  close(prev_pipe[1]);
+                    if (has_prev)  close(prev_pipe[0]);
+                    
+                    if (will_pipe) close(next_pipe[1]);
+                    if (will_pipe) close(next_pipe[0]);
+
+                    execvp(e->cmd.exe, e->cmd.args);
+                    
                 }
             }
+        if (has_prev) close(prev_pipe[0]);
+        if (has_prev) close(prev_pipe[1]);
 
-		} else if (e->type == EXPR_TYPE_PIPE) {
-			printf("\tPIPE\n");
+        if (will_pipe) {                     
+            prev_pipe[0] = next_pipe[0];
+            prev_pipe[1] = next_pipe[1];
+            has_prev = 1;
+		}                               
+
+        } else if (e->type == EXPR_TYPE_PIPE) {
+			//printf("\tPIPE\n");
 		} else if (e->type == EXPR_TYPE_AND) {
 			printf("\tAND\n");
 		} else if (e->type == EXPR_TYPE_OR) {
@@ -217,6 +246,11 @@ execute_command_line(const struct command_line *line)
 		}
 		e = e->next;
 	}
+    while(wait(NULL) > 0);
+    if (out_file > 0) {
+        close(out_file);
+        out_file = 0;
+    }
 }
 
 int
